@@ -48,13 +48,19 @@ int main(int argc, char **argv)
     real *grid = mk_1D_array(n+1, false);
     for (size_t i = 0; i < n+1; i++) {
         grid[i] = i * h;
+      //  printf("grid = %e\n", grid[i]);
     }
+
+
 
     // The diagonal of the eigenvalue matrix of T
     real *diag = mk_1D_array(m, false);
     for (size_t i = 0; i < m; i++) {
         diag[i] = 2.0 * (1.0 - cos((i+1) * PI / n));
+    //printf("diag = %e\n", diag[i]);
+
     }
+
 
     // Initialize the right hand side data
     real **b = mk_2D_array(m, m, false);
@@ -63,8 +69,12 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < m; i++) {
         for (size_t j = 0; j < m; j++) {
             b[i][j] = h * h * rhs(grid[i], grid[j]);
+     printf( "%e ", diag[i]);
+  
         }
+	printf("\n");
     }
+
 
     // Calculate Btilde^T = S^-1 * (S * B)^T
     for (size_t i = 0; i < m; i++) {
@@ -73,12 +83,17 @@ int main(int argc, char **argv)
     transpose(bt, b, m);
     for (size_t i = 0; i < m; i++) {
         fstinv_(bt[i], &n, z, &nn);
+    //printf("Btilde = %e\n", bt[i]);
+
     }
+
 
     // Solve Lambda * Xtilde = Btilde
     for (size_t i = 0; i < m; i++) {
         for (size_t j = 0; j < m; j++) {
             bt[i][j] = bt[i][j] / (diag[i] + diag[j]);
+   
+
         }
     }
 
@@ -90,6 +105,7 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < m; i++) {
         fstinv_(b[i], &n, z, &nn);
     }
+
 
     // Calculate maximal value of solution
     double u_max = 0.0;
