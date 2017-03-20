@@ -1,5 +1,0 @@
-/home/shomed/l/lenefi/Desktop/Superdata/project2/poisson/test_trans/CMakeFiles/edit_cache.dir
-/home/shomed/l/lenefi/Desktop/Superdata/project2/poisson/test_trans/CMakeFiles/common.dir
-/home/shomed/l/lenefi/Desktop/Superdata/project2/poisson/test_trans/CMakeFiles/poisson-f.dir
-/home/shomed/l/lenefi/Desktop/Superdata/project2/poisson/test_trans/CMakeFiles/poisson.dir
-/home/shomed/l/lenefi/Desktop/Superdata/project2/poisson/test_trans/CMakeFiles/rebuild_cache.dir
