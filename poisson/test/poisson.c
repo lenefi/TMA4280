@@ -142,14 +142,42 @@ real rhs(real x, real y) {
     return 2 * (y - y*y + x - x*x);
 }
 
-void transpose(real **bt, real **b, size_t m)
+//LARS, HAR LAGT INN FUNKSJON HER!
+//Transpose function
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
 {
-    for (size_t i = 0; i < m; i++) {
-        for (size_t j = 0; j < m; j++) {
-            bt[i][j] = b[j][i];
-        }
-    }
+    int * temp_displ = calloc(size+1, sizeof(int));
+    int * temp_nrows = calloc(size, sizeof(int));
+    double *temp = calloc(nrows[rank]*size, sizeof(double));
+
+temp_displ[0] = 0;
+    for (int i = 1; i < size+1; i++){
+    temp_displ[i] = temp_displ[i-1] + nrows[rank];
+    temp_nrows[i-1] = nrows[rank];
 }
+    
+for (size_t i; i < nrows[size-1]; i++){
+//If number of row is smaller than rank of process, store into temp adress    
+    if (i <nrows[rank]){
+ 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
+
+}
+//If not smaller than process, store into temp adress    
+    else {
+ 	MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
+
+}
+//Insert to adress in bt, transposed column,row.
+   for (size_t r=0; r<size; r++){
+	for (size_t c=0; c<nrows[rank]; c++){
+	    if (displ[r]+1 < displ[r+1]){
+		bt[c][displ[r]+1] = temp[temp_displ[r]+c];
+			}	
+		}
+	}
+}
+}
+
 
 real *mk_1D_array(size_t n, bool zero)
 {

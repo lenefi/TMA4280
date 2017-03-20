@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "mpi.h"
+#include <mpi.h>
 
 
 #define PI 3.14159265358979323846
@@ -76,7 +76,7 @@ MPI_Comm_size(MPI_COMM_WORLD,&size);
  
 
 //Print matrix b
-printf("b=\n ");
+printf("b=\n");
 
 for(i=0; i<m; i++){
     for(j=0; j<m; j++){
@@ -89,18 +89,19 @@ for(i=0; i<m; i++){
 transpose(bt, b, nrows, displ, size, rank);
 
 //Print matrix bt
-printf("bt= \n ");	
+printf("bt= \n");	
 for(i=0;i<m;i++){
     for(j=0;j<m;j++){
-	printf("%f ",bt[i][j]); }
-    printf("\n");	
+	printf("%f ",bt[i][j]); 
+	}
+	printf("\n");	
 }
 
 MPI_Finalize();
     return 0;
 }
-
-
+//LARS, HAR LAGT INN FUNKSJON HER!
+//Transpose function
 void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
 {
     int * temp_displ = calloc(size+1, sizeof(int));
@@ -113,31 +114,29 @@ temp_displ[0] = 0;
     temp_nrows[i-1] = nrows[rank];
 }
     
-for (size_t i; i < nrows[size-1]){
-    if { 
+for (size_t i; i < nrows[size-1]; i++){
+//If number of row is smaller than rank of process, store into temp adress    
+    if (i <nrows[rank]){
+ 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
 
 }
+//If not smaller than process, store into temp adress    
     else {
-}
-
-
-   for (){
-}
-
-
-
+ 	MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
 
 }
-
-
-
-
-
+//Insert to adress in bt, transposed column,row.
+   for (size_t r=0; r<size; r++){
+	for (size_t c=0; c<nrows[rank]; c++){
+	    if (displ[r]+1 < displ[r+1]){
+		bt[c][displ[r]+1] = temp[temp_displ[r]+c];
+			}	
+		}
+	}
+}
 }
 
-
-
-
+//Generate array-function
 real *mk_1D_array(size_t n, bool zero)
 {
     if (zero) {
