@@ -1,12 +1,67 @@
+#include <mpi.h>
+#include <stdlib.h>
+#include <memory.h>
+#include <stdio.h>
+
+/* This program partitions an array of a specified size
+* over the available MPI processes in either a strip
+* or a block fashion as specified.
+* A specified amount of repetitions of this array
+* is then saved as "combined.mat" using MPI-IO.
+*/
 
 
+//Hva er fileView?
+void createFileView ( MPI_Datatype * filetype , int* sizes ,
+int N, int rank , int size , int block)
+{
+int gsizes [2], distribs [2], dargs [2];
+gsizes [0] = gsizes [1] = N;
+distribs [0] = MPI_DISTRIBUTE_BLOCK ;
+sizes [0] = sizes [1] = 0;
+if( block ) {
+distribs [1] = MPI_DISTRIBUTE_BLOCK ;
+}
+else {
+sizes [1] = 1;
+distribs [1] = MPI_DISTRIBUTE_NONE ;
+}
+MPI_Dims_create (size ,2, sizes );
+dargs [0] = dargs [1] = MPI_DISTRIBUTE_DFLT_DARG ;
+MPI_Type_create_darray (size ,rank ,2,gsizes ,distribs ,
+dargs ,sizes ,MPI_ORDER_C ,
+MPI_DOUBLE ,filetype );
+MPI_Type_commit (filetype );
+}
+
+//Sette opp matrise-funksjon
+void setupMatrix (double** A, int rows , int cols ,
+int startrow , int startcol , int N)
+{
+for( int i=0;i<rows ;++i)
+for( int j=0;j<cols ;++j )
+A[i][j] = (i+startrow )*N+j+startcol;
+}
 
 
+//Lage matrise-funksjon
+double** createMatrix (int n1 , int n2)
+{
+int i, n;
+double **a;
+a = (double **) calloc(n1 ,sizeof(double *));
+a[0] = (double *) calloc(n1*n2 ,sizeof(double));
+for (i=1; i < n1; i++)
+a[i] = a[i -1] + n2;
+return (a);
+}
 
+
+//MAIN
 int main(int n1, int n2){
 
 int rank, size;
-MPI_IInit(&argc,&argv);
+MPI_Init(&argc,&argv);
 MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 MPI_Comm_size(MPI_COMM_WORLD,&size);
 
@@ -49,3 +104,6 @@ MPI_Finalize();
 
 return 0;
 }
+
+
+
