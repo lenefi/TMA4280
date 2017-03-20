@@ -50,81 +50,69 @@ int main(int argc, char **argv)
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Status status;
-	int rows=n/size;
-	int global_rows=rows;
+	int rows=m/size;
 	int index=0;
 	int tag=100;
-	real *grid=NULL;
-	if(rank==size-1){
-		rows=rows-1;
-	}
-	/*
-	if(rank==0)
-	{
-		for(int i = 1; i < size; i++);
-		{
-			MPI_Send(i*m, 1, MPI_INT, i, tag, MPI_COMM_WORLD);
-		}
-	}
-	else{
-		MPI_Recv(index, 1, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
-	}
-
-	*/
 	
-	//Let process zero make the pointers
-	if(rank==0){
-		grid = mk_1D_array(n+1, false);
-		for(int i = 1; i<size; i++){		
-			MPI_Send(grid, 1, MPI_DOUBLE, i, tag, MPI_COMM_WORLD);
-		}	
+	//Distribute number of rows to each process	
+	double *nrows = malloc(size, sizeof(int));
+	for(size_t i=0; i<size; i++){
+		nrows[i]=rows;
 	}
-	else{
-		MPI_Recv(grid, 1, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, &status);
+	//Distribute restcolumns
+	int rest=m%size;
+	for(size_t i =0; i<rest; i++){
+		nrows[size-i]++;
 	}
-	printf("%p\n",grid);
+	
 	// Grid points
-	
+	real *grid = mk_1D_array(n+1, false);
 	for (size_t i = 0; i < n+1; i++) {
 		grid[i] = i * h;
 	}
 	
+	//Make a displacement vector to keep track for each rank
+	size_t displacement=malloc(size+1, sizeof(size_t));
+	displacement[0]=0;	
+	for(size_t i = 1; i<size; i++){
+		displacement[i]=displacement[i-1]+nrows[i-1];
+	}
 
-
-	// The diagonal of the eigenvalue matrix of T
+	 // The diagonal of the eigenvalue matrix of T
 	real *diag = mk_1D_array(m, false);
-	for (size_t i = rank*global_rows; i < (rank+1)*global_rows; i++) {
+	for (size_t i = 0; i < m; i++) {
 		diag[i] = 2.0 * (1.0 - cos((i+1) * PI / n));
 	}
 
 	// Initialize the right hand side data
-	real **b = mk_2D_array(m, m, false);
-	real **bt = mk_2D_array(m, m, false);
-	real *z = mk_1D_array(nn, false);
-	for (size_t i = 0; i < m; i++) {
+	real **b = mk_2D_array(nrows[rank], m, false);
+	real **bt = mk_2D_array(nrows[rank], m, false);
+	real *z = mk_1D_array(nn, false);               // Hva er denne til?
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-	   		 b[i][j] = h * h * rhs(grid[i], grid[j]);
+			b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
+			//b[i][j] = h * h * rhs(grid[i], grid[j]);
 		}
 	}
 
-	// Calculate Btilde^T = S^-1 * (S * B)^T
-	for (size_t i = 0; i < m; i++) {
+	// Calculate Btilde^T = S^-1 * (S * B)^T       Ikke ferdig
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(b[i], &n, z, &nn);
 	}
 	transpose(bt, b, m);
-	for (size_t i = 0; i < m; i++) {
+	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
 	}
 
 	// Solve Lambda * Xtilde = Btilde
-	for (size_t i = 0; i < m; i++) {
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			bt[i][j] = bt[i][j] / (diag[i] + diag[j]);
+			bt[i][j] = bt[i][j] / (diag[i] + diag[j]); // Hvor er algoritmen for dette
 		}
 	}
 
 	// Calculate X = S^-1 * (S * Xtilde^T)
-	for (size_t i = 0; i < m; i++) {
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(bt[i], &n, z, &nn);
 	}
 	transpose(b, bt, m);
@@ -134,13 +122,18 @@ int main(int argc, char **argv)
 
 	// Calculate maximal value of solution
 	double u_max = 0.0;
-	for (size_t i = 0; i < m; i++) {
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			u_max = u_max > b[i][j] ? u_max : b[i][j];
 		}
 	}
-
-	printf("u_max = %e\n", u_max);
+	// All to find reduce to find maximum global sum
+	double global_u_max=0.0;
+	MPI_Reduce(&u_max, &global_u_max, 1, MPI_DOUBLE, MPI_MAX, int 0, MPI_COMM_WORLD);
+	
+	if(rank==0){	
+		printf("global_u_max = %e\n", global_u_max);
+	}
 	MPI_Finalize();
 	return 0;
 }
