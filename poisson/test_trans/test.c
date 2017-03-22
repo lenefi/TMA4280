@@ -12,7 +12,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "mpi.h"
+#include <mpi.h>
+
 
 #define PI 3.14159265358979323846
 #define true 1
@@ -22,44 +23,85 @@ typedef double real;
 typedef int bool;
 
 // Function prototypes
+
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank);
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
-void transpose(real **bt, real **b, size_t m);
-real rhs(real x, real y);
-void fst_(real *v, int *n, real *w, int *nn);
-void fstinv_(real *v, int *n, real *w, int *nn);
 
 
 int main(int argc, char **argv)
 {
+    if (argc < 2) {
+        printf("Usage:\n");
+        printf("  poisson n\n\n");
+        printf("Arguments:\n");
+        printf("  n: the problem size (must be a power of 2)\n");
+    }
 
     // The number of grid points in each direction is n+1
     // The number of degrees of freedom in each direction is n-1
     int n = atoi(argv[1]);
-    int m = n - 1;
-    int nn = 4 * n;
-    real h = 1.0 / n;
 
-    // Grid points
-    real *grid = mk_1D_array(n+1, false);
-    for (size_t i = 0; i < n+1; i++) {
-        grid[i] = i * h;
-    }
-	cout << "Grid: \n" << grid << '\n'; 
+size_t m=6;
+real **b = mk_2D_array(m, m, false);
+real **bt = mk_2D_array(m, m, false);
+int i,j;
 
-  
+//Initalise MPI
+int rank, size;
+MPI_Init(&argc,&argv);
+MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+MPI_Comm_size(MPI_COMM_WORLD,&size);
 
-    return 0;
-    }
-
-
-
-//Funksjoner 
-
-real rhs(real x, real y) {
-    return 2 * (y - y*y + x - x*x);
+//distribute rows
+    int part = m/size;
+    int *nrows = calloc(size, sizeof(int));
+    for (size_t i = 0; i < size; i++){
+        nrows[i] = part;
 }
 
+
+
+//'leftover' columns
+    int leftover = m % size;
+   for (size_t i = 1;  i <= leftover; i++)
+      nrows[size - i]++;
+
+
+//Calculate displacment vector for call to MPI_Alltoallv
+    int *displ = calloc(size+1, sizeof(int));
+    displ[0] = 0;
+    for (size_t i = 1; i < size+1; i++)
+    displ[i] = displ[i-1] + nrows[i-1];
+ 
+
+//Print matrix b
+printf("b=\n");
+
+for(i=0; i<m; i++){
+    for(j=0; j<m; j++){
+        b[i][j]=(i)*m + (j+1);
+        printf("%f ",b[i][j]); }
+    printf("\n");	
+}
+
+
+transpose(bt, b, m);
+
+//Print matrix bt
+printf("bt= \n");	
+for(i=0;i<m;i++){
+    for(j=0;j<m;j++){
+	printf("%f ",bt[i][j]); 
+	}
+	printf("\n");	
+}
+
+MPI_Finalize();
+    return 0;
+}
+
+//Transpose function
 void transpose(real **bt, real **b, size_t m)
 {
     for (size_t i = 0; i < m; i++) {
@@ -69,6 +111,7 @@ void transpose(real **bt, real **b, size_t m)
     }
 }
 
+//Generate array-function
 real *mk_1D_array(size_t n, bool zero)
 {
     if (zero) {
@@ -93,3 +136,5 @@ real **mk_2D_array(size_t n1, size_t n2, bool zero)
     }
     return ret;
 }
+
+

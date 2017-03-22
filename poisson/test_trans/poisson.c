@@ -24,7 +24,7 @@ typedef int bool;
 
 // Function prototypes
 
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank);
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank,size_t m);
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
 
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     // The number of degrees of freedom in each direction is n-1
     int n = atoi(argv[1]);
 
-size_t m=6;
+size_t m=4;
 real **b = mk_2D_array(m, m, false);
 real **bt = mk_2D_array(m, m, false);
 int i,j;
@@ -58,7 +58,8 @@ MPI_Comm_size(MPI_COMM_WORLD,&size);
     int *nrows = calloc(size, sizeof(int));
     for (size_t i = 0; i < size; i++){
         nrows[i] = part;
-}
+printf("nrows= %d ",nrows[i]);
+}printf("\n");
 
 
 
@@ -71,9 +72,10 @@ MPI_Comm_size(MPI_COMM_WORLD,&size);
 //Calculate displacment vector for call to MPI_Alltoallv
     int *displ = calloc(size+1, sizeof(int));
     displ[0] = 0;
-    for (size_t i = 1; i < size+1; i++)
+    for (size_t i = 1; i < size+1; i++){
     displ[i] = displ[i-1] + nrows[i-1];
- 
+ 	printf("disp= %d ",displ[i]);}
+printf("\n");
 
 //Print matrix b
 printf("b=\n");
@@ -86,7 +88,7 @@ for(i=0; i<m; i++){
 }
 
 
-transpose(bt, b, nrows, displ, size, rank);
+//transpose(bt, b, nrows, displ, size, rank);
 
 //Print matrix bt
 printf("bt= \n");	
@@ -100,40 +102,19 @@ for(i=0;i<m;i++){
 MPI_Finalize();
     return 0;
 }
-//LARS, HAR LAGT INN FUNKSJON HER!
+
 //Transpose function
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank,size_t m)
 {
-    int * temp_displ = calloc(size+1, sizeof(int));
-    int * temp_nrows = calloc(size, sizeof(int));
-    double *temp = calloc(nrows[rank]*size, sizeof(double));
-
-temp_displ[0] = 0;
-    for (int i = 1; i < size+1; i++){
-    temp_displ[i] = temp_displ[i-1] + nrows[rank];
-    temp_nrows[i-1] = nrows[rank];
-}
-    
-for (size_t i; i < nrows[size-1]; i++){
-//If number of row is smaller than rank of process, store into temp adress    
-    if (i <nrows[rank]){
- 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
-
-}
-//If not smaller than process, store into temp adress    
-    else {
- 	MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
-
-}
-//Insert to adress in bt, transposed column,row.
-   for (size_t r=0; r<size; r++){
-	for (size_t c=0; c<nrows[rank]; c++){
-	    if (displ[r]+1 < displ[r+1]){
-		bt[c][displ[r]+1] = temp[temp_displ[r]+c];
-			}	
-		}
-	}
-}
+int j;
+size_t i;
+	while ( i< m*m){
+    		for (j < 0; j < size-1; j++){
+    	
+ 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,bt[i],nrows,displ,MPI_DOUBLE,MPI_COMM_WORLD);
+					}
+		i+=displ[j];
+				}
 }
 
 //Generate array-function
