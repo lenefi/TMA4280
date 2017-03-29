@@ -24,7 +24,7 @@ typedef int bool;
 
 // Function prototypes
 
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank,size_t m);
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank);
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
 
@@ -42,58 +42,67 @@ int main(int argc, char **argv)
     // The number of degrees of freedom in each direction is n-1
     int n = atoi(argv[1]);
 
-size_t m=4;
-real **b = mk_2D_array(m, m, false);
-real **bt = mk_2D_array(m, m, false);
-int i,j;
-
 //Initalise MPI
 int rank, size;
+
 MPI_Init(&argc,&argv);
 MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 MPI_Comm_size(MPI_COMM_WORLD,&size);
 
+//global size
+size_t M = n;
+// local size
+size_t m = M/size;
+int part = m;
+// local row-wise block
+real **b = mk_2D_array(m, M, false);
+real **bt = mk_2D_array(m, M, false);
+int i,j;
+
+
 //distribute rows
-    int part = m/size;
     int *nrows = calloc(size, sizeof(int));
     for (size_t i = 0; i < size; i++){
         nrows[i] = part;
-printf("nrows= %d ",nrows[i]);
-}printf("\n");
+}
 
 
 
 //'leftover' columns
-    int leftover = m % size;
+    int leftover = M % size;
+   printf("leftover %u\n", leftover);
    for (size_t i = 1;  i <= leftover; i++)
+   {
       nrows[size - i]++;
-
+   }
 
 //Calculate displacment vector for call to MPI_Alltoallv
     int *displ = calloc(size+1, sizeof(int));
     displ[0] = 0;
     for (size_t i = 1; i < size+1; i++){
-    displ[i] = displ[i-1] + nrows[i-1];
- 	printf("disp= %d ",displ[i]);}
-printf("\n");
+      printf("displ= %d\n",displ[i-1]);
+      printf("nrows= %d\n",nrows[i-1]);
+      displ[i] = displ[i-1] + nrows[i-1];  
+ 	}
 
 //Print matrix b
 printf("b=\n");
 
 for(i=0; i<m; i++){
-    for(j=0; j<m; j++){
-        b[i][j]=(i)*m + (j+1);
+    for(j=0; j<M; j++){
+        b[i][j]= (displ[rank]+i)*M + (j+1);
         printf("%f ",b[i][j]); }
     printf("\n");	
 }
 
+transpose(bt, b, nrows, displ, size, rank);
 
-//transpose(bt, b, nrows, displ, size, rank);
+MPI_Barrier(MPI_COMM_WORLD);
 
 //Print matrix bt
-printf("bt= \n");	
+printf("%u : bt@%0x= \n", rank, bt);	
 for(i=0;i<m;i++){
-    for(j=0;j<m;j++){
+    for(j=0;j<M;j++){
 	printf("%f ",bt[i][j]); 
 	}
 	printf("\n");	
@@ -104,17 +113,10 @@ MPI_Finalize();
 }
 
 //Transpose function
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank,size_t m)
+void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
 {
-int j;
-size_t i;
-	while ( i< m*m){
-    		for (j < 0; j < size-1; j++){
-    	
- 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,bt[i],nrows,displ,MPI_DOUBLE,MPI_COMM_WORLD);
-					}
-		i+=displ[j];
-				}
+printf("on rank %u : nrows = %u; displ = %u \n", rank, nrows[rank], displ[rank]);
+MPI_Alltoallv(b[0],nrows,displ,MPI_DOUBLE,bt[0],nrows,displ,MPI_DOUBLE,MPI_COMM_WORLD);				
 }
 
 //Generate array-function
