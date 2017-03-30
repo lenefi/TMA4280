@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "mpi.h"
+#include "omp.h"
 
 #define PI 3.14159265358979323846
 #define true 1
@@ -60,22 +61,27 @@ int main(int argc, char **argv)
 	
 	//Distribute number of rows to each process	
 	int *nrows = calloc(size, sizeof(int));
+	
+	#pragma omp parallel for schedule(static)
 	for(size_t i=0; i<size; i++){
 		nrows[i]=rows;
 	}
 	//Distribute restrows
 	int rest=m%size;
+	#pragma omp parallel for schedule(static)
 	for(size_t i =0; i<rest; i++){
 		nrows[size-i]++;
 	}
 
 	int *bsize = calloc(size, sizeof(int));
+	#pragma omp parallel for schedule(static)	
 	for(size_t i=0; i<size; i++){
 		bsize[i]=nrows[rank]*nrows[i];
 	}
 	
 	// Grid points
 	real *grid = mk_1D_array(n+1, false);
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < n+1; i++) {
 		grid[i] = i * h;
 	}
@@ -83,12 +89,14 @@ int main(int argc, char **argv)
 	//Make a displacement vector to keep track for each rank
 	int *displacement=calloc(size+1, sizeof(int));
 	displacement[0]=0;	
+	#pragma omp parallel for schedule(static)
 	for(size_t i = 1; i<size; i++){
 		displacement[i]=displacement[i-1]+bsize[i-1];
 	}
 
 	 // The diagonal of the eigenvalue matrix of T
 	real *diag = mk_1D_array(m, false);
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < m; i++) {
 		diag[i] = 2.0 * (1.0 - cos((i+1) * PI / n));
 	}
@@ -97,6 +105,7 @@ int main(int argc, char **argv)
 	real **b = mk_2D_array(nrows[rank], m, false);
 	real **bt = mk_2D_array(nrows[rank], m, false);
 	real *z = mk_1D_array(nn, false);               // Hva er denne til?
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
@@ -105,16 +114,19 @@ int main(int argc, char **argv)
 	}
 
 	// Calculate Btilde^T = S^-1 * (S * B)^T       Ikke ferdig
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(b[i], &n, z, &nn);
 	}
 	//transpose(bt, b, m);
 	transpose(b, bt, bsize,displacement,size,rank);
+	#pragma omp parallel for schedule(static)	
 	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
 	}
 
 	// Solve Lambda * Xtilde = Btilde
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			bt[i][j] = bt[i][j] / (diag[i] + diag[displacement[rank]+j]); // Hvor er algoritmen for dette
@@ -122,18 +134,21 @@ int main(int argc, char **argv)
 	}
 
 	// Calculate X = S^-1 * (S * Xtilde^T)
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(bt[i], &n, z, &nn);
 	}
 	
         transpose(bt, b, bsize, displacement, size, rank);
-
+	
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fstinv_(b[i], &n, z, &nn);
 	}
 
 	// Calculate maximal value of solution
 	double u_max = 0.0;
+	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			u_max = u_max > b[i][j] ? u_max : b[i][j];
