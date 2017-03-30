@@ -25,6 +25,7 @@ typedef int bool;
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
 //void transpose(real **bt, real **b, size_t m);
+void transpose(real **bt, real **b, int *nrows, int *displacement, int size, int rank);
 real rhs(real x, real y);
 void fst_(real *v, int *n, real *w, int *nn);
 void fstinv_(real *v, int *n, real *w, int *nn);
@@ -41,6 +42,7 @@ int main(int argc, char **argv)
 	// The number of grid points in each direction is n+1
 	// The number of degrees of freedom in each direction is n-1
 	int n = atoi(argv[1]);
+
 	int m = n - 1;
 	int nn = 4 * n;
 	real h = 1.0 / n;
@@ -102,6 +104,7 @@ int main(int argc, char **argv)
 		fst_(b[i], &n, z, &nn);
 	}
 	//transpose(bt, b, m);
+	transpose(b, bt, nrows,displacement,size,rank);
 	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
 	}
@@ -118,9 +121,7 @@ int main(int argc, char **argv)
 		fst_(bt[i], &n, z, &nn);
 	}
 	
-	
-
-//	transpose(b, bt, m);
+        transpose(bt, b, nrows, displacement, size, rank);
 
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fstinv_(b[i], &n, z, &nn);
@@ -149,43 +150,11 @@ real rhs(real x, real y) {
     return 2 * (y - y*y + x - x*x);
 }
 
-
-/*
-//LARS, HAR LAGT INN FUNKSJON HER!
-//Transpose function
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
+void transpose(real **bt, real **b, int *nrows, int *displacement, int size, int rank)
 {
-	int * temp_displ = calloc(size+1, sizeof(int));
-	int * temp_nrows = calloc(size, sizeof(int));
-	double *temp = calloc(nrows[rank]*size, sizeof(double));
 
-	temp_displ[0] = 0;
-	for (int i = 1; i < size+1; i++){
-		temp_displ[i] = temp_displ[i-1] + nrows[rank];
-		temp_nrows[i-1] = nrows[rank];
-	}
-
-	for (size_t i; i < nrows[size-1]; i++){
-		//If number of row is smaller than rank of process, store into temp adress    
-		if (i <nrows[rank]){
-			MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
-		}
-		//If not smaller than process, store into temp adress    
-		else {
-			MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
-		}
-		//Insert to adress in bt, transposed column,row.
-		for (size_t r=0; r<size; r++){
-			for (size_t c=0; c<nrows[rank]; c++){
-				if (displ[r]+1 < displ[r+1]){
-				bt[c][displ[r]+1] = temp[temp_displ[r]+c];
-				}	
-			}
-		}
-	}
+MPI_Alltoallv(b[0],nrows,displacement,MPI_DOUBLE,bt[0],nrows,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
 }
-
-*/
 
 /*
 void transpose(real **bt, real **b, size_t m)
