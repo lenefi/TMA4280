@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-/home/shomed/l/larssnek/Documents/TMA4280/TMA4280/poisson/test/poisson.c
+/home/shomed/l/lenefi/Superdata/project2/poisson/test/poisson.c
 stdlib.h
 -
 stdio.h
@@ -14,7 +14,7 @@ stdio.h
 math.h
 -
 mpi.h
-/home/shomed/l/larssnek/Documents/TMA4280/TMA4280/poisson/test/mpi.h
+/home/shomed/l/lenefi/Superdata/project2/poisson/test/mpi.h
 
 /usr/lib/openmpi/include/mpi.h
 stddef.h
