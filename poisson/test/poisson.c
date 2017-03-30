@@ -25,7 +25,7 @@ typedef int bool;
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
 //void transpose(real **bt, real **b, size_t m);
-void transpose(real **bt, real **b, int *nrows, int *displacement, int size, int rank);
+void transpose(real **bt, real **b, int *bsize, int *displacement, int size, int rank);
 real rhs(real x, real y);
 void fst_(real *v, int *n, real *w, int *nn);
 void fstinv_(real *v, int *n, real *w, int *nn);
@@ -59,7 +59,7 @@ int main(int argc, char **argv)
 
 	
 	//Distribute number of rows to each process	
-	double *nrows = calloc(size, sizeof(int));
+	int *nrows = calloc(size, sizeof(int));
 	for(size_t i=0; i<size; i++){
 		nrows[i]=rows;
 	}
@@ -67,6 +67,11 @@ int main(int argc, char **argv)
 	int rest=m%size;
 	for(size_t i =0; i<rest; i++){
 		nrows[size-i]++;
+	}
+
+	int *bsize = calloc(size, sizeof(int));
+	for(size_t i=0; i<size; i++){
+		bsize[i]=nrows[rank]*nrows[i];
 	}
 	
 	// Grid points
@@ -76,10 +81,10 @@ int main(int argc, char **argv)
 	}
 	
 	//Make a displacement vector to keep track for each rank
-	size_t *displacement=calloc(size+1, sizeof(size_t));
+	int *displacement=calloc(size+1, sizeof(int));
 	displacement[0]=0;	
 	for(size_t i = 1; i<size; i++){
-		displacement[i]=displacement[i-1]+nrows[i-1];
+		displacement[i]=displacement[i-1]+bsize[i-1];
 	}
 
 	 // The diagonal of the eigenvalue matrix of T
@@ -94,8 +99,8 @@ int main(int argc, char **argv)
 	real *z = mk_1D_array(nn, false);               // Hva er denne til?
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
-			//b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
+			b[i][j] = h * h * rhs(grid[i], grid[j]);
 		}
 	}
 
@@ -104,7 +109,7 @@ int main(int argc, char **argv)
 		fst_(b[i], &n, z, &nn);
 	}
 	//transpose(bt, b, m);
-	transpose(b, bt, nrows,displacement,size,rank);
+	transpose(b, bt, bsize,displacement,size,rank);
 	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
 	}
@@ -121,7 +126,7 @@ int main(int argc, char **argv)
 		fst_(bt[i], &n, z, &nn);
 	}
 	
-        transpose(bt, b, nrows, displacement, size, rank);
+        transpose(bt, b, bsize, displacement, size, rank);
 
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fstinv_(b[i], &n, z, &nn);
@@ -150,10 +155,9 @@ real rhs(real x, real y) {
     return 2 * (y - y*y + x - x*x);
 }
 
-void transpose(real **bt, real **b, int *nrows, int *displacement, int size, int rank)
+void transpose(real **bt, real **b, int *bsize, int *displacement, int size, int rank)
 {
-
-MPI_Alltoallv(b[0],nrows,displacement,MPI_DOUBLE,bt[0],nrows,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
+MPI_Alltoallv(b[0],bsize,displacement,MPI_DOUBLE,bt[0],bsize,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
 }
 
 /*
