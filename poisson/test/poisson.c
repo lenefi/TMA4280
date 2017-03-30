@@ -24,7 +24,7 @@ typedef int bool;
 // Function prototypes
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
-void transpose(real **bt, real **b, size_t m);
+//void transpose(real **bt, real **b, size_t m);
 real rhs(real x, real y);
 void fst_(real *v, int *n, real *w, int *nn);
 void fstinv_(real *v, int *n, real *w, int *nn);
@@ -54,12 +54,14 @@ int main(int argc, char **argv)
 	int index=0;
 	int tag=100;
 	
+
+	
 	//Distribute number of rows to each process	
-	double *nrows = malloc(size, sizeof(int));
+	double *nrows = calloc(size, sizeof(int));
 	for(size_t i=0; i<size; i++){
 		nrows[i]=rows;
 	}
-	//Distribute restcolumns
+	//Distribute restrows
 	int rest=m%size;
 	for(size_t i =0; i<rest; i++){
 		nrows[size-i]++;
@@ -72,7 +74,7 @@ int main(int argc, char **argv)
 	}
 	
 	//Make a displacement vector to keep track for each rank
-	size_t displacement=malloc(size+1, sizeof(size_t));
+	size_t *displacement=calloc(size+1, sizeof(size_t));
 	displacement[0]=0;	
 	for(size_t i = 1; i<size; i++){
 		displacement[i]=displacement[i-1]+nrows[i-1];
@@ -99,7 +101,7 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(b[i], &n, z, &nn);
 	}
-	transpose(bt, b, m);
+	//transpose(bt, b, m);
 	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
 	}
@@ -107,7 +109,7 @@ int main(int argc, char **argv)
 	// Solve Lambda * Xtilde = Btilde
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			bt[i][j] = bt[i][j] / (diag[i] + diag[j]); // Hvor er algoritmen for dette
+			bt[i][j] = bt[i][j] / (diag[i] + diag[displacement[rank]+j]); // Hvor er algoritmen for dette
 		}
 	}
 
@@ -115,8 +117,12 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fst_(bt[i], &n, z, &nn);
 	}
-	transpose(b, bt, m);
-	for (size_t i = 0; i < m; i++) {
+	
+	
+
+//	transpose(b, bt, m);
+
+	for (size_t i = 0; i < nrows[rank]; i++) {
 		fstinv_(b[i], &n, z, &nn);
 	}
 
@@ -127,9 +133,10 @@ int main(int argc, char **argv)
 			u_max = u_max > b[i][j] ? u_max : b[i][j];
 		}
 	}
+
 	// All to find reduce to find maximum global sum
 	double global_u_max=0.0;
-	MPI_Reduce(&u_max, &global_u_max, 1, MPI_DOUBLE, MPI_MAX, int 0, MPI_COMM_WORLD);
+	MPI_Reduce(&u_max, &global_u_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 	
 	if(rank==0){	
 		printf("global_u_max = %e\n", global_u_max);
@@ -142,42 +149,54 @@ real rhs(real x, real y) {
     return 2 * (y - y*y + x - x*x);
 }
 
+
+/*
 //LARS, HAR LAGT INN FUNKSJON HER!
 //Transpose function
 void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
 {
-    int * temp_displ = calloc(size+1, sizeof(int));
-    int * temp_nrows = calloc(size, sizeof(int));
-    double *temp = calloc(nrows[rank]*size, sizeof(double));
+	int * temp_displ = calloc(size+1, sizeof(int));
+	int * temp_nrows = calloc(size, sizeof(int));
+	double *temp = calloc(nrows[rank]*size, sizeof(double));
 
-temp_displ[0] = 0;
-    for (int i = 1; i < size+1; i++){
-    temp_displ[i] = temp_displ[i-1] + nrows[rank];
-    temp_nrows[i-1] = nrows[rank];
-}
-    
-for (size_t i; i < nrows[size-1]; i++){
-//If number of row is smaller than rank of process, store into temp adress    
-    if (i <nrows[rank]){
- 	MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
+	temp_displ[0] = 0;
+	for (int i = 1; i < size+1; i++){
+		temp_displ[i] = temp_displ[i-1] + nrows[rank];
+		temp_nrows[i-1] = nrows[rank];
+	}
 
-}
-//If not smaller than process, store into temp adress    
-    else {
- 	MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
-
-}
-//Insert to adress in bt, transposed column,row.
-   for (size_t r=0; r<size; r++){
-	for (size_t c=0; c<nrows[rank]; c++){
-	    if (displ[r]+1 < displ[r+1]){
-		bt[c][displ[r]+1] = temp[temp_displ[r]+c];
-			}	
+	for (size_t i; i < nrows[size-1]; i++){
+		//If number of row is smaller than rank of process, store into temp adress    
+		if (i <nrows[rank]){
+			MPI_Alltoallv(b[i],nrows,displ,MPI_DOUBLE,temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
+		}
+		//If not smaller than process, store into temp adress    
+		else {
+			MPI_Alltoallv(b[i-1], nrows, displ, MPI_DOUBLE, temp,temp_nrows,temp_displ,MPI_DOUBLE,MPI_COMM_WORLD);
+		}
+		//Insert to adress in bt, transposed column,row.
+		for (size_t r=0; r<size; r++){
+			for (size_t c=0; c<nrows[rank]; c++){
+				if (displ[r]+1 < displ[r+1]){
+				bt[c][displ[r]+1] = temp[temp_displ[r]+c];
+				}	
+			}
 		}
 	}
 }
-}
 
+*/
+
+/*
+void transpose(real **bt, real **b, size_t m)
+{
+    for (size_t i = 0; i < m; i++) {
+        for (size_t j = 0; j < m; j++) {
+            bt[i][j] = b[j][i];
+        }
+    }
+}
+*/
 
 real *mk_1D_array(size_t n, bool zero)
 {
