@@ -26,7 +26,7 @@ typedef int bool;
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
 //void transpose(real **bt, real **b, size_t m);
-void transpose(real **bt, real **b, int *bsize, int *displacement, int size, int rank);
+void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, int size, int rank);
 real rhs(real x, real y);
 void fst_(real *v, int *n, real *w, int *nn);
 void fstinv_(real *v, int *n, real *w, int *nn);
@@ -109,8 +109,8 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
-			//b[i][j] = h * h * rhs(grid[i], grid[j]);
-			b[i][j]=i+1; // Testing transpose
+			b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j]=i+1; // Testing transpose
 		}
 	}
 ///////////////////////////////////// Testing transpose ///////////////////////////////////////
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
 	printf("\n");
 
 
-        transpose(bt, b, bsize, displacement, size, rank);
+        transpose(bt, b, bsize, displacement,nrows, size, rank);
 
 
 	printf("bt:\n");
@@ -146,7 +146,7 @@ int main(int argc, char **argv)
 		fst_(b[i], &n, z, &nn);
 	}
 	//transpose(bt, b, m);
-	transpose(b, bt, bsize,displacement,size,rank);
+	transpose(b, bt, bsize,displacement,nrows,size,rank);
 	#pragma omp parallel for schedule(static)	
 	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
 		fstinv_(bt[i], &n, z, &nn);
@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 	}
 	printf("\n");
 
-        transpose(bt, b, bsize, displacement, size, rank);
+        transpose(bt, b, bsize, displacement,nrows, size, rank);
 
 
 	
@@ -214,9 +214,25 @@ real rhs(real x, real y) {
     return 2 * (y - y*y + x - x*x);
 }
 
-void transpose(real **bt, real **b, int *bsize, int *displacement, int size, int rank)
+void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, int size, int rank)
 {
-MPI_Alltoallv(b[0],bsize,displacement,MPI_DOUBLE,bt[0],bsize,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
+	int d=0;
+	double temp=0;
+	MPI_Alltoallv(b[0],bsize,displacement,MPI_DOUBLE,bt[0],bsize,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
+	for(int i=0;i<size; i++){
+                d=0;
+		for(int j=0; j<i; j++){
+			d=d+nrows[j];
+		}
+		for(int col=0; col<nrows[rank];col++){
+			for(int row=col+1; row < nrows[i]; row++){
+				temp=bt[col][row+d];		
+                                printf("%d : %d\n", col, row);
+				bt[col][row+d]=bt[row][col+d];
+				bt[row][col+d]=temp;
+			}
+		}
+	}
 }
 
 /*
