@@ -109,8 +109,8 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
-			//b[i][j] = h * h * rhs(grid[i], grid[j]);
-			b[i][j]=i+1; // Testing transpose
+			b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j]=i+1; // Testing transpose
 		}
 	}
 ///////////////////////////////////// Testing transpose ///////////////////////////////////////
