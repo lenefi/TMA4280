@@ -109,9 +109,36 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
 			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
-			b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j] = h * h * rhs(grid[i], grid[j]);
+			b[i][j]=i+1; // Testing transpose
 		}
 	}
+///////////////////////////////////// Testing transpose ///////////////////////////////////////
+	printf("b:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",b[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+
+        transpose(bt, b, bsize, displacement, size, rank);
+
+
+	printf("bt:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",bt[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	
+
 
 	// Calculate Btilde^T = S^-1 * (S * B)^T       Ikke ferdig
 	#pragma omp parallel for schedule(static)
@@ -139,8 +166,25 @@ int main(int argc, char **argv)
 		fst_(bt[i], &n, z, &nn);
 	}
 	
-        transpose(bt, b, bsize, displacement, size, rank);
+
 	
+	printf("b:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",b[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+        transpose(bt, b, bsize, displacement, size, rank);
+
+
+	
+
+
+	
+
 	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		fstinv_(b[i], &n, z, &nn);
