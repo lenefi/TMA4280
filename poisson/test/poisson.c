@@ -87,11 +87,14 @@ int main(int argc, char **argv)
 	}
 	
 	//Make a displacement vector to keep track for each rank
-	int *displacement=calloc(size+1, sizeof(int));
+	int *displacement=calloc(size, sizeof(int));
+	int *local_displacement=calloc(size,sizeof(int));
 	displacement[0]=0;	
+	local_displacement[0]=0;
 	#pragma omp parallel for schedule(static)
 	for(size_t i = 1; i<size; i++){
 		displacement[i]=displacement[i-1]+bsize[i-1];
+		local_displacement[i]=local_displacement[i-1]+nrows[i-1];
 	}
 
 	 // The diagonal of the eigenvalue matrix of T
@@ -104,16 +107,16 @@ int main(int argc, char **argv)
 	// Initialize the right hand side data
 	real **b = mk_2D_array(nrows[rank], m, false);
 	real **bt = mk_2D_array(nrows[rank], m, false);
+	real **btranspose=mk_2D_array(nrows[rank], m, false);
 	real *z = mk_1D_array(nn, false);               // Hva er denne til?
 	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
-			b[i][j] = h * h * rhs(grid[i], grid[j]);
-			//b[i][j]=i+1; // Testing transpose
-		}
+			b[i][j]=h*h*rhs(grid[local_displacement[rank]+i+1], grid[j+1]);	   		 
+			//b[i][j] = h * h * rhs(grid[i], grid[j]);
+					}
 	}
-///////////////////////////////////// Testing transpose ///////////////////////////////////////
+///////////////////////////////////// print b ///////////////////////////////////////
 	printf("b:\n");
 	for( int i=0; i<nrows[rank]; i++){
 		for(int j=0; j<m; j++){
@@ -122,15 +125,17 @@ int main(int argc, char **argv)
 		printf("\n");
 	}
 	printf("\n");
+//////////////////////////////////////////////////////////////////////////////////
 
+/////////////////////////////////// check design of a transpose of b //////////////////////////
 
-        transpose(bt, b, bsize, displacement,nrows, size, rank);
+        transpose(btranspose, b, bsize, displacement,nrows, size, rank); //btranspose is not used later on
 
 
 	printf("bt:\n");
 	for( int i=0; i<nrows[rank]; i++){
 		for(int j=0; j<m; j++){
-			printf("%f ",bt[i][j]);
+			printf("%f ",btranspose[i][j]);
 		}
 		printf("\n");
 	}
@@ -156,7 +161,7 @@ int main(int argc, char **argv)
 	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			bt[i][j] = bt[i][j] / (diag[i] + diag[displacement[rank]+j]); // Hvor er algoritmen for dette
+			bt[i][j] = bt[i][j] / (diag[i] + diag[local_displacement[rank]+j]); // Hvor er algoritmen for dette
 		}
 	}
 
@@ -167,7 +172,7 @@ int main(int argc, char **argv)
 	}
 	
 
-	
+/*	
 	printf("b:\n");
 	for( int i=0; i<nrows[rank]; i++){
 		for(int j=0; j<m; j++){
@@ -176,14 +181,8 @@ int main(int argc, char **argv)
 		printf("\n");
 	}
 	printf("\n");
-
+*/
         transpose(bt, b, bsize, displacement,nrows, size, rank);
-
-
-	
-
-
-	
 
 	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
@@ -203,8 +202,11 @@ int main(int argc, char **argv)
 	double global_u_max=0.0;
 	MPI_Reduce(&u_max, &global_u_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 	
-	if(rank==0){	
+	if(rank==0 && size>1){	
 		printf("global_u_max = %e\n", global_u_max);
+	}
+	else if(size==1){
+		printf("global_u_max = %e\n", u_max);
 	}
 	MPI_Finalize();
 	return 0;
@@ -227,7 +229,7 @@ void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, in
 		for(int col=0; col<nrows[rank];col++){
 			for(int row=col+1; row < nrows[i]; row++){
 				temp=bt[col][row+d];		
-                                printf("%d : %d\n", col, row);
+                                //printf("%d : %d\n", col, row);
 				bt[col][row+d]=bt[row][col+d];
 				bt[row][col+d]=temp;
 			}
