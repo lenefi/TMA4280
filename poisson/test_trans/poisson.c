@@ -12,8 +12,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include <mpi.h>
-
+#include "mpi.h"
+#include "omp.h"
 
 #define PI 3.14159265358979323846
 #define true 1
@@ -23,103 +23,236 @@ typedef double real;
 typedef int bool;
 
 // Function prototypes
-
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank);
 real *mk_1D_array(size_t n, bool zero);
 real **mk_2D_array(size_t n1, size_t n2, bool zero);
-
+//void transpose(real **bt, real **b, size_t m);
+void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, int size, int rank);
+real rhs(real x, real y);
+void fst_(real *v, int *n, real *w, int *nn);
+void fstinv_(real *v, int *n, real *w, int *nn);
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) {
-        printf("Usage:\n");
-        printf("  poisson n\n\n");
-        printf("Arguments:\n");
-        printf("  n: the problem size (must be a power of 2)\n");
-    }
-
-    // The number of grid points in each direction is n+1
-    // The number of degrees of freedom in each direction is n-1
-    int n = atoi(argv[1]);
-
-//Initalise MPI
-int rank, size;
-
-MPI_Init(&argc,&argv);
-MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-MPI_Comm_size(MPI_COMM_WORLD,&size);
-
-//global size
-size_t M = n;
-// local size
-size_t m = M/size;
-int part = m;
-// local row-wise block
-real **b = mk_2D_array(m, M, false);
-real **bt = mk_2D_array(m, M, false);
-int i,j;
-
-
-//distribute rows
-    int *nrows = calloc(size, sizeof(int));
-    for (size_t i = 0; i < size; i++){
-        nrows[i] = part;
-}
-
-
-
-//'leftover' columns
-    int leftover = M % size;
-   printf("leftover %u\n", leftover);
-   for (size_t i = 1;  i <= leftover; i++)
-   {
-      nrows[size - i]++;
-   }
-
-//Calculate displacment vector for call to MPI_Alltoallv
-    int *displ = calloc(size+1, sizeof(int));
-    displ[0] = 0;
-    for (size_t i = 1; i < size+1; i++){
-      printf("displ= %d\n",displ[i-1]);
-      printf("nrows= %d\n",nrows[i-1]);
-      displ[i] = displ[i-1] + nrows[i-1];  
- 	}
-
-//Print matrix b
-printf("b=\n");
-
-for(i=0; i<m; i++){
-    for(j=0; j<M; j++){
-        b[i][j]= (displ[rank]+i)*M + (j+1);
-        printf("%f ",b[i][j]); }
-    printf("\n");	
-}
-
-transpose(bt, b, nrows, displ, size, rank);
-
-MPI_Barrier(MPI_COMM_WORLD);
-
-//Print matrix bt
-printf("%u : bt@%0x= \n", rank, bt);	
-for(i=0;i<m;i++){
-    for(j=0;j<M;j++){
-	printf("%f ",bt[i][j]); 
+	if (argc < 2) {
+		printf("Usage:\n");
+		printf("  poisson n\n\n");
+		printf("Arguments:\n");
+		printf("  n: the problem size (must be a power of 2)\n");
 	}
-	printf("\n");	
+	
+	// The number of grid points in each direction is n+1
+	// The number of degrees of freedom in each direction is n-1
+	int n = atoi(argv[1]);
+
+	int m = n - 1;
+	int nn = 4 * n;
+	real h = 1.0 / n;
+	//Used for MPI partitioning
+	int rank, size;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Status status;
+	int rows=m/size;
+	int index=0;
+	int tag=100;
+	
+
+	
+	//Distribute number of rows to each process	
+	int *nrows = calloc(size, sizeof(int));
+	
+	#pragma omp parallel for schedule(static)
+	for(size_t i=0; i<size; i++){
+		nrows[i]=rows;
+	}
+	//Distribute restrows
+	int rest=m%size;
+	#pragma omp parallel for schedule(static)
+	for(size_t i =0; i<rest; i++){
+		nrows[size-i]++;
+	}
+
+	int *bsize = calloc(size, sizeof(int));
+	printf("bsize:");
+	#pragma omp parallel for schedule(static)	
+	for(size_t i=0; i<size; i++){
+		bsize[i]=nrows[rank]*nrows[i];
+	printf("%d ", bsize[i]);
+
+	}
+printf("\n");
+	// Grid points
+	real *grid = mk_1D_array(n+1, false);
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < n+1; i++) {
+		grid[i] = i * h;
+	}
+	
+	//Make a displacement vector to keep track for each rank
+	int *displacement=calloc(size+1, sizeof(int));
+	displacement[0]=0;	
+	printf("displ = ");	
+	#pragma omp parallel for schedule(static)
+	for(size_t i = 1; i<size; i++){
+		displacement[i]=displacement[i-1]+bsize[i-1];
+		printf("%d ", displacement[i]);
+
+	}
+printf("\n");
+
+	 // The diagonal of the eigenvalue matrix of T
+	real *diag = mk_1D_array(m, false);
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < m; i++) {
+		diag[i] = 2.0 * (1.0 - cos((i+1) * PI / n));
+	}
+
+	// Initialize the right hand side data
+	real **b = mk_2D_array(nrows[rank], m, false);
+	real **bt = mk_2D_array(nrows[rank], m, false);
+	real *z = mk_1D_array(nn, false);               // Hva er denne til?
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		for (size_t j = 0; j < m; j++) {
+			//b[i][j]=h*h*rhs(grid[displacement[rank]+i], grid[j]);	   		 
+			b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j]=i+1; // Testing transpose
+		}
+	}
+///////////////////////////////////// Testing transpose ///////////////////////////////////////
+	printf("b:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",b[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+
+        transpose(bt, b, bsize, displacement,nrows, size, rank);
+
+
+	printf("bt:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",bt[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	
+
+
+	// Calculate Btilde^T = S^-1 * (S * B)^T       Ikke ferdig
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		fst_(b[i], &n, z, &nn);
+	}
+	//transpose(bt, b, m);
+	transpose(b, bt, bsize,displacement,nrows,size,rank);
+	#pragma omp parallel for schedule(static)	
+	for (size_t i = 0; i < nrows[rank]; i++) {               // Ikke ferdig
+		fstinv_(bt[i], &n, z, &nn);
+	}
+
+	// Solve Lambda * Xtilde = Btilde
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		for (size_t j = 0; j < m; j++) {
+			bt[i][j] = bt[i][j] / (diag[i] + diag[displacement[rank]+j]); // Hvor er algoritmen for dette
+		}
+	}
+
+	// Calculate X = S^-1 * (S * Xtilde^T)
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		fst_(bt[i], &n, z, &nn);
+	}
+	
+
+	
+	printf("b:\n");
+	for( int i=0; i<nrows[rank]; i++){
+		for(int j=0; j<m; j++){
+			printf("%f ",b[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+
+        transpose(bt, b, bsize, displacement,nrows, size, rank);
+
+
+	
+
+
+	
+
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		fstinv_(b[i], &n, z, &nn);
+	}
+
+	// Calculate maximal value of solution
+	double u_max = 0.0;
+	#pragma omp parallel for schedule(static)
+	for (size_t i = 0; i < nrows[rank]; i++) {
+		for (size_t j = 0; j < m; j++) {
+			u_max = u_max > b[i][j] ? u_max : b[i][j];
+		}
+	}
+
+	// All to find reduce to find maximum global sum
+	double global_u_max=0.0;
+	MPI_Reduce(&u_max, &global_u_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	
+	if(rank==0){	
+		printf("global_u_max = %e\n", global_u_max);
+	}
+	MPI_Finalize();
+	return 0;
 }
 
-MPI_Finalize();
-    return 0;
+real rhs(real x, real y) {
+    return 2 * (y - y*y + x - x*x);
 }
 
-//Transpose function
-void transpose(real **bt, real **b, int *nrows, int *displ, int size, int rank)
+void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, int size, int rank)
 {
-printf("on rank %u : nrows = %u; displ = %u \n", rank, nrows[rank], displ[rank]);
-MPI_Alltoallv(b[0],nrows,displ,MPI_DOUBLE,bt[0],nrows,displ,MPI_DOUBLE,MPI_COMM_WORLD);				
+	int d=0;
+	double temp=0;
+	MPI_Alltoallv(b[0],bsize,displacement,MPI_DOUBLE,bt[0],bsize,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
+	for(int i=0;i<size; i++){
+                d=0;
+		for(int j=0; j<i; j++){
+			d=d+nrows[j];
+		}
+		for(int col=0; col<nrows[rank];col++){
+			for(int row=col+1; row < nrows[i]; row++){
+				temp=bt[col][row+d];		
+                                printf("%d : %d\n", col, row);
+				bt[col][row+d]=bt[row][col+d];
+				bt[row][col+d]=temp;
+			}
+		}
+	}
 }
 
-//Generate array-function
+/*
+void transpose(real **bt, real **b, size_t m)
+{
+    for (size_t i = 0; i < m; i++) {
+        for (size_t j = 0; j < m; j++) {
+            bt[i][j] = b[j][i];
+        }
+    }
+}
+*/
+
 real *mk_1D_array(size_t n, bool zero)
 {
     if (zero) {
@@ -144,5 +277,3 @@ real **mk_2D_array(size_t n1, size_t n2, bool zero)
     }
     return ret;
 }
-
-
