@@ -1,1 +1,0 @@
-/usr/bin/mpicc  -g -std=c99  -fopenmp   CMakeFiles/poisson.dir/poisson.c.o  -o poisson -rdynamic libcommon.a -lmpi -lgfortran -lm -lquadmath -lm 
