@@ -112,8 +112,9 @@ int main(int argc, char **argv)
 	#pragma omp parallel for schedule(static)
 	for (size_t i = 0; i < nrows[rank]; i++) {
 		for (size_t j = 0; j < m; j++) {
-			b[i][j]=h*h*rhs(grid[local_displacement[rank]+i+1], grid[j+1]);	   		 
-			//b[i][j] = h * h * rhs(grid[i], grid[j]);
+			//b[i][j]=h*h*rhs(grid[local_displacement[rank]+i+1], grid[j+1]); //Correct b	   		 
+			
+			b[i][j]=i*m+displacement[rank]*size+j+1;	//Test b to check b transpose
 					}
 	}
 ///////////////////////////////////// print b ///////////////////////////////////////
@@ -221,6 +222,7 @@ void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, in
 	int d=0;
 	double temp=0;
 	MPI_Alltoallv(b[0],bsize,displacement,MPI_DOUBLE,bt[0],bsize,displacement,MPI_DOUBLE,MPI_COMM_WORLD);				
+
 	for(int i=0;i<size; i++){
                 d=0;
 		for(int j=0; j<i; j++){
@@ -235,6 +237,7 @@ void transpose(real **bt, real **b, int *bsize, int *displacement,int *nrows, in
 			}
 		}
 	}
+
 }
 
 /*
