@@ -74,7 +74,7 @@ int main(int argc, char **argv)
 	}
 
 	int *bsize = calloc(size, sizeof(int));
-	printf("bsize:");
+	printf("bsize: ");
 	#pragma omp parallel for schedule(static)	
 	for(size_t i=0; i<size; i++){
 		bsize[i]=nrows[rank]*nrows[i];
